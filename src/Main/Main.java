@@ -1,9 +1,15 @@
 package Main;
 
 public class Main {
-	public static void main(String args[]) throws InterruptedException {
+	public static void main(String args[]) {
 		
-		Experiments.runExperiment();
+		
+		try {
+			Experiments.runExperiment();
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		
 		/* Test t = new Test();
 		

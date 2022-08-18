@@ -3,7 +3,7 @@ library(dplyr)
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 params <- 11 # number of saved parameters
-dirName <- "30_10_2021/" # directory where scripts looks for files
+dirName <- "26_06_loop/" # directory where scripts looks for files
 fileNames <- list.files(dirName) # all filenames in the directory
 
 realizations <- max(gsub("(^\\D+)([0-9]+)(.*)", "\\2", fileNames)) # number of independent realizations
@@ -21,7 +21,7 @@ filesGroups <- lapply(trimmedFileNames, function(x) {
 for(i in 1:length(filesGroups)) {
   # Just gets raw data from files
   rawData <- lapply(filesGroups[[i]], function(x) {
-      data.frame(read.table(paste(dirName, x, sep=""), skip = params, sep = "\t", header = TRUE))
+      data.frame(read.table(paste(dirName, x, sep=""), skip = params+1, sep = "\t", header = TRUE))
     })
   
   # Gets parameters from all files
@@ -103,3 +103,4 @@ for(i in 1:length(filesGroups)) {
   
   print(paste(round(i/length(filesGroups) * 100, digits=2), "%", sep="", collapse=""))
 }
+

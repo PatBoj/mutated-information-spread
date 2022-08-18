@@ -1,0 +1,2 @@
+facebook network: https://snap.stanford.edu/data/ego-Facebook.html
+twitch: http://snap.stanford.edu/data/twitch-social-networks.html

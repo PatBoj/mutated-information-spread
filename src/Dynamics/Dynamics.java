@@ -52,7 +52,7 @@ public class Dynamics
 	// List of all messages
 	private ArrayList<Message> messages;
 	
-	// Array to agregate data
+	// Array to agregata data
 	// [0] - id counter
 	// [1] - average length
 	// [2] - average emotion
@@ -161,12 +161,20 @@ public class Dynamics
 	// Sets random initial opinions for every agent
 	public void setInitialOpinions(Network net) {
 		int[] tempOpinion = new int[D];
+		int tempSumOpinion;
+		int i = 0;
 			
-		for(int i=0; i<N; i++) {
-			for(int j=0; j<D; j++)
+		while(i < N) {
+			tempSumOpinion = 0;
+			for(int j=0; j<D; j++) {
 				tempOpinion[j] = rnd.nextInt(3)-1;
+				tempSumOpinion += tempOpinion[j]*tempOpinion[j]; // non-zero length vectors only 
+			}
 
-			net.getNode(i).setNodeOpinion(tempOpinion.clone());
+			if(tempSumOpinion != 0) {
+				net.getNode(i).setNodeOpinion(tempOpinion.clone());
+				i++;
+			}
 		}
 	}
 	
@@ -223,7 +231,8 @@ public class Dynamics
 	// Cosine similarity
 	// the message[0] is the message content
 	// message[1] is for indexes in opinion vector
-	private double cosineSimilarity(int[] opinion, int[][] message) {		
+	private double cosineSimilarity(int[] opinion, int[][] message) {
+		
 		double lOpinion = 0;
 		double lMessage = 0;
 		double dotProduct = 0;
@@ -235,10 +244,8 @@ public class Dynamics
 		}
 		
 		// when agent has neutral opinion on something he's randomly post it
-		if(lOpinion == 0 || lMessage == 0)
-			return 0;
-		else
-			return dotProduct/Math.sqrt(lOpinion * lMessage);
+		if(lOpinion == 0 || lMessage == 0) return rnd.nextDouble();
+		else return dotProduct/Math.sqrt(lOpinion * lMessage);
 	}
 	
 	// Get agents cosine similarity
@@ -348,11 +355,15 @@ public class Dynamics
 			indexes.add(i);
 		
 		int[] message = new int[mLength];
+		boolean zeroLength = true;
+		
+		while(zeroLength) {
+			Collections.shuffle(indexes);
 			
-		Collections.shuffle(indexes);
-			
-		for(int i=0; i<mLength; i++) 
-			message[i] = getNodeOpinion(i)[indexes.get(i)];
+			for(int i=0; i<mLength; i++) 
+				message[i] = getNodeOpinion(i)[indexes.get(i)];
+			if(Tools.length(message) != 0) zeroLength = false;
+		}
 		
 		messages.add(new Message(new int[][] {message.clone(), Tools.convertFromArrayList(indexes, mLength)}, time, nMsg));
 		setMessage(sourceNode, getLastMessage());
@@ -449,69 +460,71 @@ public class Dynamics
 	}
 	
 	// One time step
-	private void oneStep(int time, Save s, boolean competition) {
+	private void oneStep(int time, Save s) {
 		int node = rnd.nextInt(N); // pick random node from the network
 		boolean alreadyShared; // true if message with this ID was shared by agent
 		double cosineSimilarity; // cosine similarity between message and node opinion
 		boolean isIdentical; // true if the message is the same as agents's opinion
 		int[][] newContent; // new message content
-		//String edit = ""; // show change in the message
+		String edit = ""; // show change in the message
 		
 		// Sends new message to the network
 		if(rnd.nextDouble() < pNewMessage) {
 			sendRandomMessage(rnd.nextInt(N), time);
-			//save(s);
 			saveDataToArray();
 		} else { // Share message
 			// Checks if the last neighbor message is similar to the node's opinion vector
 			// this loop is for all messages shared by node's neighbors
 			for(int i=getDashboardSize(node) - 1; i>=0; i--) {
 				cosineSimilarity = cosineSimilarity(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes());
-				alreadyShared = alreadyShared(getNodeSharedIds(node), getDashboard(node).get(i));
 				// If the agent like it the message goes to next condition
-				if(cosineSimilarity >= cosineThreshold & !alreadyShared) {
-					// Message can be edit before sharing
-					// but if it's matching the node's opinion it shouldn't be changed
-					if(rnd.nextDouble() < pEdit) {
-						double randomChance = rnd.nextDouble();
-						isIdentical = isIdentical(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes());
-						//editID++;
+				if(cosineSimilarity >= cosineThreshold) {
+					alreadyShared = alreadyShared(getNodeSharedIds(node), getDashboard(node).get(i));
+					alreadyShared = false;
+					// Checks if this message was already shared (by ID)
+					if(!alreadyShared) {
+						// Message can be edit before sharing
+						// but if it's matching the node's opinion it shouldn't be changed
+						if(rnd.nextDouble() < pEdit) {
+							double randomChance = rnd.nextDouble();
+							isIdentical = isIdentical(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes());
+							editID++;
 							
-						// Delete information
-						// if of curse length of the message is greater than 1
-						if(!isIdentical && randomChance < pDeleteOneBit && getDashboard(node).get(i).getMessageContentAndIndexes()[0].length > 1) {
-							newContent = deleteOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
-							//edit = "del" + editID;
+							// Delete information
+							// if of curse length of the message is greater than 1
+							if(!isIdentical && randomChance < pDeleteOneBit && getDashboard(node).get(i).getMessageContentAndIndexes()[0].length > 1) {
+								newContent = deleteOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
+								edit = "del" + editID;
+							}
+							// Change information
+							else if (!isIdentical && randomChance < pDeleteOneBit + pChangeOneBit) {
+								newContent = changeOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes(), cosineSimilarity).clone();
+								edit = "chg" + editID;
+							}
+							// Add new information
+							else if(randomChance <= pDeleteOneBit + pDeleteOneBit + pChangeOneBit) {
+								newContent = addOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
+								edit = "add" + editID;
+							}
+							// Else throw an error
+							else 
+								throw new Error("Something wrong with probabilities of changing, deleting and adding new pice of information.");
 						}
-						// Change information
-						else if (!isIdentical && randomChance < pDeleteOneBit + pChangeOneBit) {
-							newContent = changeOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes(), cosineSimilarity).clone();
-							//edit = "chg" + editID;
-						}
-						// Add new information
-						else if(randomChance <= pDeleteOneBit + pDeleteOneBit + pChangeOneBit) {
-							newContent = addOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
-							//edit = "add" + editID;
-						}
-						// Else throw an error
-						else 
-							throw new Error("Something wrong with probabilities of changing, deleting and adding new pice of information.");
+						else newContent = getDashboard(node).get(i).getMessageContentAndIndexes().clone();
+						messages.add(new Message(newContent.clone(), time, getDashboard(node).get(i).getId()));
+						getLastMessage().addEdit(getDashboard(node).get(i).getEdit());
+						if(edit != "") getLastMessage().addEdit(edit);
+						
+						setMessage(node, getLastMessage());
+						setDashboard(node, getLastMessage());
+						saveDataToArray();
+						break; // COMMENT IT IF YOU WANT TO EXCLUDE COMPETITION
 					}
-					else newContent = getDashboard(node).get(i).getMessageContentAndIndexes().clone();
-						
-					messages.add(new Message(newContent.clone(), time, getDashboard(node).get(i).getId()));
-					getLastMessage().addEdit(getDashboard(node).get(i).getEdit());
-					//if(edit != "") getLastMessage().addEdit(edit);
-						
-					setMessage(node, getLastMessage());
-					setDashboard(node, getLastMessage());
-					//save(s);
-					saveDataToArray();
-					if(competition) break; 
+					//else getDashboard(node).remove(i);
 				}
-				if(!competition) getDashboard(node).remove(i);
+				//else getDashboard(node).remove(i);
 			}
-			if(!competition) getDashboard(node).clear(); 
+			// getDashboard(node).clear(); // NON COMMENT IT IF YOU WANT TO EXCLUDE COMPETITION
 		}
 	}
 	
@@ -520,59 +533,64 @@ public class Dynamics
 		double cosineSimilarity; // cosine similarity between message and node opinion
 		boolean isIdentical; // true if the message is the same as agents's opinion
 		int[][] newContent; // new message content
-		//String edit = ""; // show change in the message
+		String edit = ""; // show change in the message
 
 		// Checks if the last neighbor message is similar to the node's opinion vector
 		// this loop is for all messages shared by node's neighbors
 		for(int i=getDashboardSize(node) - 1; i>=0; i--) {
 			cosineSimilarity = cosineSimilarity(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes());
-			alreadyShared = alreadyShared(getNodeSharedIds(node), getDashboard(node).get(i));
 			// If the agent like it the message goes to next condition
-			if(cosineSimilarity >= cosineThreshold & !alreadyShared) {
-				// Message can be edit before sharing
-				// but if it's matching the node's opinion it shouldn't be changed
-				if(rnd.nextDouble() < pEdit) {
-					double randomChance = rnd.nextDouble();
-					isIdentical = isIdentical(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes());
-					editID++;
+			if(cosineSimilarity >= cosineThreshold) {
+				alreadyShared = alreadyShared(getNodeSharedIds(node), getDashboard(node).get(i));
+				// Checks if this message was already shared (by ID)
+				if(!alreadyShared) {
+					// Message can be edit before sharing
+					// but if it's matching the node's opinion it shouldn't be changed
+					if(rnd.nextDouble() < pEdit) {
+						double randomChance = rnd.nextDouble();
+						isIdentical = isIdentical(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes());
+						editID++;
 
-					// Delete information
-					// if of curse length of the message is greater than 1
-					if(!isIdentical && randomChance < pDeleteOneBit && getDashboard(node).get(i).getMessageContentAndIndexes()[0].length > 1) {
-						newContent = deleteOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
-						//edit = "del" + editID;
+						// Delete information
+						// if of curse length of the message is greater than 1
+						if(!isIdentical && randomChance < pDeleteOneBit && getDashboard(node).get(i).getMessageContentAndIndexes()[0].length > 1) {
+							newContent = deleteOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
+							edit = "del" + editID;
+						}
+						// Change information
+						else if (!isIdentical && randomChance < pDeleteOneBit + pChangeOneBit) {
+							newContent = changeOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes(), cosineSimilarity).clone();
+							edit = "chg" + editID;
+						}
+						// Add new information
+						else if(randomChance <= pDeleteOneBit + pDeleteOneBit + pChangeOneBit) {
+							newContent = addOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
+							edit = "add" + editID;
+						}
+						// Else throw an error
+						else 
+							throw new Error("Something wrong with probabilities of changing, deleting and adding new pice of information.");
 					}
-					// Change information
-					else if (!isIdentical && randomChance < pDeleteOneBit + pChangeOneBit) {
-						newContent = changeOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes(), cosineSimilarity).clone();
-						//edit = "chg" + editID;
-					}
-					// Add new information
-					else if(randomChance <= pDeleteOneBit + pDeleteOneBit + pChangeOneBit) {
-						newContent = addOneBit(getNodeOpinion(node), getDashboard(node).get(i).getMessageContentAndIndexes()).clone();
-						//edit = "add" + editID;
-					}
-					// Else throw an error
-					else 
-						throw new Error("Something wrong with probabilities of changing, deleting and adding new pice of information.");
-				}
-				else newContent = getDashboard(node).get(i).getMessageContentAndIndexes().clone();
-				messages.add(new Message(newContent.clone(), time, getDashboard(node).get(i).getId()));
-					
-				getLastMessage().addEdit(getDashboard(node).get(i).getEdit());
-				//if(edit != "") getLastMessage().addEdit(edit);
+					else newContent = getDashboard(node).get(i).getMessageContentAndIndexes().clone();
+					messages.add(new Message(newContent.clone(), time, getDashboard(node).get(i).getId()));
+					getLastMessage().addEdit(getDashboard(node).get(i).getEdit());
+					if(edit != "") getLastMessage().addEdit(edit);
 
-				setMessage(node, getLastMessage());
-				setDashboard(node, getLastMessage());
-				saveDataToArray();
+					setMessage(node, getLastMessage());
+					setDashboard(node, getLastMessage());
+					saveDataToArray();
+					//break; // COMMENT IT IF YOU WANT TO EXCLUDE COMPETITION
 				}
+					//else getDashboard(node).remove(i);
+			}
+			//else getDashboard(node).remove(i);
 		}
-		getDashboard(node).clear();
+		getDashboard(node).clear(); // NON COMMENT IT IF YOU WANT TO EXCLUDE COMPETITION
 	}
 	
 	// Runs entire simulation
-	public void run(int maxTime, Save s, boolean competition) {
-		dataToSave = new double[2][maxTime];
+	public void run(int maxTime, Save s) {
+		dataToSave = new double[3][maxTime];
 		for(int i=0; i<2; i++)
 			for(int j=0; j<maxTime; j++)
 				dataToSave[i][j] = 0;
@@ -580,39 +598,36 @@ public class Dynamics
 		
 		sendRandomMessage(rnd.nextInt(N), 0);
 		saveDataToArray();
-		//saveHeader(s);
 		
 		for(int i=0; i<maxTime; i++) {
-			oneStep(i+1, s, competition);
+			oneStep(i+1, s);
 		}
+		saveData(s);
 		
-		if(!competition)
-			for(int i=0; i<12000; i++)
-				oneStepCompetition(i % N, maxTime+1+i);
+		//for(int i=0; i<6000; i++)
+		//	oneStepCompetition(i % N, maxTime+1+i);
 	}
 	
 	public void saveHeader(Save s) {
 		// Commented lines are not necessary right now
 		//int nEdit = 30;
 		
+		//s.writeDatatb("repetition");
 		s.writeDatatb("repetition");
-		//s.writeDatatb("ID");
 		s.writeDataln("avg_length");
+		//s.writeDatatb("avg_length");
 		//s.writeDatatb("time");
 		//s.writeDatatb("type");
 		//s.writeDatatb("threshold");
 		//s.writeDataln("threshold");
 		//for(int i=0; i<D; i++)
 		//	s.writeDatatb("inf" + (i+1));
-		
-		
-		/// FOOOOOOR DIFFERENT PLOT
-		//for(int i=0; i<nEdit-1; i++)
+		//for(int i=0; i<nEdit; i++)
 		//	s.writeDatatb("edit" + (i+1));
 		//s.writeDataln("edit" + nEdit);
 	}
 	
-	public void saveParameters(Save s, int realisations, int maxTime, boolean competition) {
+	public void saveParameters(Save s, String dynType, int realisations, int maxTime) {
 		s.writeDatatb("N");
 		s.writeDatatb(N);
 		s.writeDataln("Number of nodes in the newtork");
@@ -630,19 +645,19 @@ public class Dynamics
 		s.writeDataln("Length of the opinion vector");
 		
 		s.writeDatatb("eta");
-		s.writeDatatb(pNewMessage);
+		s.writeDatatb(pEdit);
 		s.writeDataln("Probability of creating new message");
 		
 		s.writeDatatb("tau");
 		s.writeDatatb(Tools.convertToDouble(cosineThreshold));
-		s.writeDataln("Probability of edit an information");
+		s.writeDataln("Threshold cosines");
 		
 		s.writeDatatb("alpha");
-		s.writeDatatb(pEdit);
-		s.writeDataln("Probability of editing a message");
+		s.writeDatatb(pNewMessage);
+		s.writeDataln("Probability of sending new message");
 		
 		s.writeDatatb("dynamics type");
-		s.writeDatatb(competition ? "with_competition" : "without_competition");
+		s.writeDatatb(dynType);
 		s.writeDataln("Type of the dynamics, with or without competition");
 		
 		s.writeDatatb("closest similarity");
@@ -663,7 +678,7 @@ public class Dynamics
 	private void save(Save s) {
 		//s.writeDatatb(repetition);
 		s.writeDatatb(getLastMessage().getId());
-		//s.writeDatatb(getLastMessage().getMessageContent().length);
+		s.writeDataln(getLastMessage().getMessageContent().length);
 		//s.writeDataln(Tools.getAverage(getLastMessage().getMessageContent()));
 		//s.writeDatatb(getLastMessage().getTime());
 		//s.writeDatatb(type);
@@ -710,9 +725,8 @@ public class Dynamics
 			tajm.pauseTimer(0);
 		}*/
 		
-		if(getLastMessage().getEdit().size() == 0) s.writeDataln("");
-		for(int j=0; j<getLastMessage().getEdit().size(); j++)
-			s.writeData(getLastMessage().getEdit().get(j) + (String)(j == (getLastMessage().getEdit().size()-1) ? "\n" : "\t"));
+		//for(int j=0; j<getLastMessage().getEdit().size(); j++)
+		//	s.writeData(getLastMessage().getEdit().get(j) + (String)(j == (getLastMessage().getEdit().size()-1) ? "\n" : "\t"));
 	}
 	
 	// Aggregates data to save
@@ -726,7 +740,7 @@ public class Dynamics
 	
 	// Saves aggregated data to file
 	public void saveData(Save s) {
-		saveHeader(s);
+		//saveHeader(s);
 		for(int i=0; i<=maxIndexSave; i++) {
 			s.writeDatatb(Tools.convertToString(dataToSave[0][i], 0));
 			s.writeDataln(dataToSave[1][i] / dataToSave[0][i]);

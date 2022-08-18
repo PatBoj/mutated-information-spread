@@ -101,7 +101,7 @@ public class Network {
 	// if it exist error will appear
 	protected void addLink(int node1, int node2) {
 		// Errors and exceptions
-		if (nodes.get(node1).checkLink(node1, node2) == -1)
+		if (nodes.get(node1).checkLink(node1, node2) != -1)
 			throw new Error("Such connection already exists");
 
 		addLinkNC(node1, node2);
